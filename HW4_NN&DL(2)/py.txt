@@ -1,0 +1,283 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from utils import load_mnist
+from collections import OrderedDict
+#加载训练集或测试集
+path = './MNIST Data' #数据集文件所在目录
+# 加载训练集合测试集
+# 设置normalization为True，将数据缩放到[0,1]之间
+# 设置one_hot_label为True，将标签转化为one_hot向量
+(x_train, y_train), (x_test, y_test) = load_mnist(path, normalize=True, one_hot_label=True)
+# print('The shape of X_train is:',x_train.shape)
+# print('The shape of Y_train is:',y_train.shape)
+# print('The shape of X_test is:',x_test.shape)
+# print('The shape of Y_test is:',y_test.shape)
+# fig = plt.figure()
+#
+# ax1 = fig.add_subplot(141)
+# ax1.imshow(x_train[1,:].reshape(28, 28), cmap='Greys')
+# ax2 = fig.add_subplot(142)
+# ax2.imshow(x_train[2,:].reshape(28,28), cmap='Greys')
+# ax3 = fig.add_subplot(143)
+# ax3.imshow(x_train[3,:].reshape(28,28), cmap='Greys')
+# ax4 = fig.add_subplot(144)
+# ax4.imshow(x_train[4,:].reshape(28,28), cmap='Greys')
+# plt.show()
+# print('one hot 标签：',y_train[1,:],y_train[2,:],y_train[3,:],y_train[4,:])
+# print('对应的实际标签：',np.argmax(y_train[1,:]),np.argmax(y_train[2,:]),np.argmax(y_train[3,:]),np.argmax(y_train[4,:]))
+
+def initialize_parameters(input_size, hidden_size, output_size, weight_init_std):
+    """
+    @param input_size:输入向量维度
+    @param hidden_size:中间神经元个数
+    @param output_size:输出层神经元个数
+    @param weight_init_sta:比例因子
+    """
+    np.random.seed(1)
+    params = {}
+
+    params['W1'] = np.random.randn(input_size, hidden_size) * weight_init_std
+    params['b1'] = np.zeros((hidden_size,))  # 请参考样例完成代码
+    ### START CODE HERE ###
+    params['W2'] = np.random.randn(hidden_size,hidden_size)*weight_init_std
+    params['b2'] = np.zeros((hidden_size,))
+    params['W3'] = np.random.randn(hidden_size, output_size)*weight_init_std
+    params['b3'] = np.zeros((output_size,))
+
+    ### END CODE HERE ###
+
+    print("W1's shape:", params['W1'].shape)
+    print("b1's shape:", params['b1'].shape)
+    print("W2's shape:", params['W2'].shape)
+    print("b2's shape:", params['b2'].shape)
+    print("W3's shape:", params['W3'].shape)
+    print("b3's shape:", params['b3'].shape)  # 请在调用该函数的地方观察该神经网络各个参数的shape，是否符合预期
+
+    return params
+
+# initialize_parameters(784,300,10,0.01)
+class LeakyRelu:
+    def __init__(self):
+        self.mask = None
+        self.alpha = 0.1
+
+    def forward(self, x):
+        self.mask = (x <= 0)  # mask表示选择出x的值中小于等于0的部分内容
+        out = x.copy()
+        ### START CODE HERE ###  #请参考LeakyRelu表达式实现前向传播过程
+        out[self.mask] = self.alpha * out[self.mask]
+        ### END CODE HERE ###
+        return out
+
+    def backward(self, dout):
+        ### START CODE HERE ###  #请参考LeakyRelu表达式y关于x的导数公式实现反向传播过程
+        dout[self.mask] = self.alpha * dout[self.mask]
+        ### END CODE HERE ###
+        dx = dout
+        return dx
+
+
+# leakyRelu = LeakyRelu()
+# x = np.array( [[1.0, -0.5], [-2.0, 3.0]] )
+# leakyRelu.forward(x), leakyRelu.backward(x)
+class Affine:
+    def __init__(self, W, b):
+        self.W = W
+        self.b = b
+
+        self.x = None
+        self.original_x_shape = None
+        # 权重和偏置参数的导数
+        self.dW = None
+        self.db = None
+
+    def forward(self, x):
+        self.original_x_shape = x.shape
+        x = x.reshape(x.shape[0], -1)
+        self.x = x
+        ### START CODE HERE ###
+        out = np.dot(x, self.W) + self.b
+        ### END CODE HERE ###
+        return out
+
+    def backward(self, dout):
+        dx = np.dot(dout, self.W.T)
+        ### START CODE HERE ###
+        self.dW = np.dot(self.x.T, dout)
+        self.db = dout
+        ### END CODE HERE ###
+
+        dx = dx.reshape(*self.original_x_shape)  # 还原输入数据的形状（对应张量）
+        return dx
+
+def softmax(x):
+    x = x.T
+    x = x - np.max(x, axis=0)
+    y = np.exp(x) / np.sum(np.exp(x), axis=0)
+    return y.T
+
+
+def cross_entropy_error(pred, y):
+    if pred.ndim == 1:
+        y = y.reshape(1, y.size)
+        pred = pred.reshape(1, pred.size)
+
+    # 监督数据是one-hot-vector的情况下，转换为正确解标签的索引
+    if y.size == pred.size:
+        y = y.argmax(axis=1)
+
+    batch_size = pred.shape[0]
+
+    res = None
+
+    res = -np.sum(np.log(pred[:, y] + 1e-7)) / batch_size
+
+    return res
+
+
+class SoftmaxWithLoss:
+    def __init__(self):
+        self.loss = None
+        self.pred = None  # softmax的输出
+        self.y = None  # 监督数据
+
+    def forward(self, x, y):
+        self.y = y
+        self.pred = softmax(x)
+        self.loss = cross_entropy_error(self.pred, self.y)
+
+        return self.loss
+
+    def backward(self, dout=1):
+        batch_size = self.y.shape[0]
+        if self.y.size == self.pred.size:  # 监督数据是one-hot-vector的情况
+            dx = (self.pred - self.y) / batch_size
+        else:
+            dx = self.pred.copy()
+            dx[np.arange(batch_size), self.y] -= 1
+            dx = dx / batch_size
+
+        return dx
+
+
+class TwoLayerNet:
+    def __init__(self, input_size, hidden_size, output_size, weight_init_std=0.01):
+
+        # 初始化权重
+        self.params = initialize_parameters(input_size, hidden_size, output_size, weight_init_std)
+        # 记录训练次数 adam里要用
+        self.t = 0
+
+        # 生成层
+        self.layers = OrderedDict()
+        self.layers['Affine1'] = Affine(self.params['W1'], self.params['b1'])
+        self.layers['LeakyRelu1'] = LeakyRelu()
+        self.layers['Affine2'] = Affine(self.params['W2'], self.params['b2'])
+        self.layers['LeakyRelu2'] = LeakyRelu()
+        self.layers['Affine3'] = Affine(self.params['W3'], self.params['b3'])
+
+        self.lastLayer = SoftmaxWithLoss()
+
+    def predict(self, x):
+        # 前向传播
+        pred = x.copy()
+        for layer in self.layers.values():
+            # 通过forward函数完成前向传播
+            ### START CODE HERE ###
+            pred = layer.forward(pred)  # 对每一层进行前向传播预测结果
+            ### END CODE HERE ###
+
+        return pred
+
+    def loss(self, x, y):
+        # 计算交叉熵损失
+        ### START CODE HERE ###
+        pred = self.predict(x)  # 计算关于x的预测结果
+        # loss = cross_entropy_error(pred,y)  # 使用SoftmaxWithLoss层计算预测结果和y之间的交叉熵损失
+        loss = self.lastLayer.loss
+        ### END CODE HERE ###
+        return loss
+
+    def accuracy(self, x, y):
+        # 输入数据x和标签y，输出当前神经网络的预测准确率
+        accuracy = None
+        pred = self.predict(x)
+        pred = np.argmax(pred, axis=1)
+        if y.ndim != 1:
+            y = np.argmax(y, axis=1)
+
+        accuracy = np.sum(pred == y) / float(x.shape[0])
+
+        return accuracy
+
+    def gradient(self, x, y):
+        # 前向传播
+        self.loss(x, y)
+
+        # 反向传播
+        dout = 1
+        dout = self.lastLayer.backward(dout)
+
+        layers = list(self.layers.values())
+        layers.reverse()
+        for layer in layers:
+            dout = layer.backward(dout)
+
+        # 设定
+        grads = {}
+        grads['W1'], grads['b1'] = self.layers['Affine1'].dW, self.layers['Affine1'].db
+        grads['W2'], grads['b2'] = self.layers['Affine2'].dW, self.layers['Affine2'].db
+        grads['W3'], grads['b3'] = self.layers['Affine3'].dW, self.layers['Affine3'].db
+
+        return grads
+
+
+def update_parameters(network, grads, learning_rate=0.001):
+    """
+    使用梯度下降法更新network的参数
+    """
+
+    # 在这里我们给出了最基础的梯度下降法更新网络参数的实现代码，请同学们参考并完成其他优化算法的代码
+
+    for key in ('W1', 'b1', 'W2', 'b2', 'W3', 'b3'):
+        network.params[key] -= learning_rate * grads[key]  # 在network现在的参数基础上减去学习率*梯度
+
+    return
+
+def train_network(network, update_params_method, iters_num, train_size, batch_size, learning_rate):
+    train_loss_list = []
+    train_acc_list = []
+    test_acc_list = []
+
+    iter_per_epoch = max(train_size / batch_size, 1)
+
+    for i in range(iters_num):
+        batch_mask = np.random.choice(train_size, batch_size)
+        x_batch = x_train[batch_mask]
+        t_batch = y_train[batch_mask]
+        network.t += 1
+
+        # 计算梯度
+        grad = network.gradient(x_batch, t_batch)
+
+        # 更新梯度
+        update_params_method(network, grad, learning_rate)
+
+        loss = network.loss(x_batch, t_batch)
+        train_loss_list.append(loss)
+
+        if i % iter_per_epoch == 0:
+            train_acc = network.accuracy(x_train, y_train)
+            test_acc = network.accuracy(x_test, y_test)
+            train_acc_list.append(train_acc)
+            test_acc_list.append(test_acc)
+            print("Train acc:{:<.6f}\tTest acc:{:<.6f}".format(train_acc, test_acc))
+# 读入数据
+(x_train, y_train), (x_test, y_test) = load_mnist(path, normalize=True, one_hot_label=True)
+# 定义神经网络
+network = TwoLayerNet(input_size=784, hidden_size=300, output_size=10)
+iters_num = 10000 #迭代次数
+train_size = x_train.shape[0] #训练集的样本数量
+batch_size = 100 #batch大小
+learning_rate = 0.1 #学习率
+train_network(network, update_parameters, iters_num, train_size, batch_size, learning_rate) #开始训练网络
